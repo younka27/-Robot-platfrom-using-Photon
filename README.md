@@ -1,2 +1,2 @@
-# -Robot-line-follower-using-Photon
+# Robot-line-follower-using-Photon
 In this project, a robotic platform controlled by an photon board (IoT) connected with simple elctronic board like Arduino This also allows for some asynchronous computing tasks, like reading sensors while processing the next movement instructions at the same time. It also allows interacting with a desktop or laptop via WiFi which immediately opens up a world of extra possibilities. the robot  came with a echo sounder to measure distances, mounted on a servo so you will see some code for that as well. Likewise it has three line followers mounted underneath.
