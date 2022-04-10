@@ -1,0 +1,136 @@
+// This #include statement was automatically added by the Particle IDE.
+#include <adafruit-ina219.h>
+
+#include "Adafruit_BNO055.h"
+
+/*
+   Connections
+   ===========
+   Connect SCL to D1
+   Connect SDA to D0
+   Connect VDD to 3.3V DC
+   Connect GROUND to common ground
+ */
+
+/* Set the delay between fresh samples */
+#define BNO055_SAMPLERATE_DELAY_MS 25
+#define LED_PIN D7 // (Particle is D7)
+#define MY_PORT 2221
+#define SERVER_PORT 2222
+
+Adafruit_BNO055 bno = Adafruit_BNO055();
+byte server[] = {192, 168, 178, 33};
+boolean ledState = false;
+Adafruit_INA219 ina219;
+unsigned long lastTime = 0;
+unsigned long lastSec = 0;
+UDP Udp;
+byte toBuf[80];
+int toOfs = 0;
+imu::Vector<3> accelV;
+imu::Vector<3> magV;
+imu::Vector<3> gyroV;
+imu::Vector<3> eulerV;
+imu::Vector<3> linV;
+imu::Vector<3> graV;
+
+void toggleLED() {
+    ledState = !ledState;
+    digitalWrite(LED_PIN, ledState);
+}
+
+/**************************************************************************/
+/*
+    Arduino setup function (automatically called at startup)
+ */
+
+/**************************************************************************/
+void setup(void) {
+    pinMode(LED_PIN, OUTPUT);
+    Serial1.begin(115200);
+    Serial1.write('s');
+    Serial1.write('0');
+    Serial1.write('\n');
+    ina219.begin();
+    /* Initialise the sensor */
+    while (!bno.begin()) {
+        /* There was a problem detecting the BNO055 ... check your connections */
+        Particle.publish("bno055", "Not yet connected to BNO055.");
+        delay(1500);
+    }
+    Udp.begin(MY_PORT);
+    delay(1000);
+    bno.setExtCrystalUse(true);
+    Particle.publish("bno055", "Main code loop started.");
+    lastTime = lastSec = millis();
+}
+
+/**************************************************************************/
+/*
+    Arduino loop function, called once 'setup' is complete (your own code
+    should go here)
+ */
+
+/**************************************************************************/
+void loop(void) {
+    // Possible vector values can be:
+    // - VECTOR_ACCELEROMETER - m/s^2
+    // - VECTOR_MAGNETOMETER  - uT
+    // - VECTOR_GYROSCOPE     - rad/s
+    // - VECTOR_EULER         - degrees
+    // - VECTOR_LINEARACCEL   - m/s^2
+    // - VECTOR_GRAVITY       - m/s^2
+    se();
+    rep();
+}
+
+void rep() {
+    if (millis() - lastTime > BNO055_SAMPLERATE_DELAY_MS) {
+        lastTime = millis();
+        float shuntvoltage = ina219.getShuntVoltage_mV();
+        float busvoltage = ina219.getBusVoltage_V();
+        float current_mA = ina219.getCurrent_mA();
+        Udp.beginPacket(server, SERVER_PORT);
+        Udp.write(String::format("m%lu\n", millis()));
+        Udp.write(String::format("V%f %f %f\n", shuntvoltage, busvoltage, current_mA));
+        if (lastTime - lastSec > 1000) {
+            lastSec = lastTime;
+            uint8_t systm, gyro, accel, mag;
+            bno.getCalibration(&systm, &gyro, &accel, &mag);
+            Udp.write(String::format("C%d %d %d %d\n", systm, gyro, accel, mag));
+            Udp.write(String::format("T%d\n", bno.getTemp()));
+            Udp.write(String::format("F%lu\n", System.freeMemory()));
+        }
+        accelV = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
+        Udp.write(String::format("p%f %f %f\n", accelV.x(), accelV.y(), accelV.z()));
+        magV = bno.getVector(Adafruit_BNO055::VECTOR_MAGNETOMETER);
+        Udp.write(String::format("q%f %f %f\n", magV.x(), magV.y(), magV.z()));
+        gyroV = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
+        Udp.write(String::format("g%f %f %f\n", gyroV.x(), gyroV.y(), gyroV.z()));
+        eulerV = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+        Udp.write(String::format("G%f %f %f\n", eulerV.x(), eulerV.y(), eulerV.z()));
+        linV = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
+        Udp.write(String::format("L%f %f %f\n", linV.x(), linV.y(), linV.z()));
+        graV = bno.getVector(Adafruit_BNO055::VECTOR_GRAVITY);
+        Udp.write(String::format("l%f %f %f\n", graV.x(), graV.y(), graV.z()));
+        Udp.endPacket();
+    }
+}
+
+void se() {
+    while (Serial1.available()) {
+        if (Serial1.available()) {
+            byte b = Serial1.read();
+            toBuf[toOfs++] = b;
+            if (b == 10) {
+                Udp.sendPacket(toBuf, toOfs, server, SERVER_PORT);
+                toOfs = 0;
+            }
+        }
+    }
+    int rx = Udp.parsePacket();
+    while (rx > 0) {
+        Serial1.write(Udp.read());
+        rx--;
+    }
+}

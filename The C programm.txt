@@ -1,0 +1,148 @@
+#### The C Programm to make with Aduino Board ######
+#include <Servo.h>  //servo library
+Servo echoServo; // create servo object
+
+int Echo = A4;
+int Trig = A5;
+
+#define LT_R 10
+#define LT_M 4
+#define LT_L 2
+
+#define ENA 5
+#define ENB 6
+#define IN1 7
+#define IN2 8
+#define IN3 9
+#define IN4 11
+
+int ang = 1500;
+int dist;
+int ltr, mtr, rtr;
+int ena = 0, enb = 0, inx = 0;
+int stopMil;
+unsigned long lastUpdate;
+
+void allStop() {
+  digitalWrite(ENA, ena = 0);
+  digitalWrite(ENB, enb = 0);
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
+  inx = 0x0000;
+}
+
+// Ultrasonic distance measurement function
+
+int distanceTest() {
+  digitalWrite(Trig, LOW);
+  delayMicroseconds(2);
+  digitalWrite(Trig, HIGH);
+  delayMicroseconds(20);
+  digitalWrite(Trig, LOW);
+  float Fdistance = pulseIn(Echo, HIGH, 25000) / 58;
+  return (int) Fdistance;
+}
+
+void setup() {
+  echoServo.attach(3); // attach servo on pin 3 to servo object
+  echoServo.write(ang); //set servo position according to scaled value
+  pinMode(Echo, INPUT);
+  pinMode(Trig, OUTPUT);
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+  pinMode(ENA, OUTPUT);
+  pinMode(ENB, OUTPUT);
+  pinMode(LT_R, INPUT);
+  pinMode(LT_M, INPUT);
+  pinMode(LT_L, INPUT);
+  allStop();
+  Serial.begin(115200);
+}
+
+void loop() {
+  if ((millis() - lastUpdate) > 50) {
+    lastUpdate = millis();
+    // my time
+    Serial.print("M");
+    Serial.println(lastUpdate);
+    // distance
+    dist = distanceTest();
+    Serial.print("d");
+    Serial.println(dist, DEC);
+    // line tracking
+    ltr = digitalRead(LT_L);
+    mtr = digitalRead(LT_M);
+    rtr = digitalRead(LT_R);
+    Serial.print("t");
+    Serial.print(ltr, DEC);
+    Serial.print(mtr, DEC);
+    Serial.println(rtr, DEC);
+  }
+}
+
+void serialEvent() {
+  while (Serial.available()) {
+    switch (Serial.read()) {
+      case 'A':
+        {
+          ena = Serial.parseInt();
+          ena = constrain(ena, 0, 255);
+          analogWrite(ENA, ena);
+          break;
+        }
+      case 'B':
+        {
+          enb = Serial.parseInt();
+          enb = constrain(enb, 0, 255);
+          analogWrite(ENB, enb);
+          break;
+        }
+      case 'I':
+        {
+          inx = Serial.parseInt();
+          inx &= 0x1111;
+          digitalWrite(IN1, !(inx & 0x1000));
+          digitalWrite(IN2, !(inx & 0x0100));
+          digitalWrite(IN3, !(inx & 0x0010));
+          digitalWrite(IN4, !(inx & 0x0001));
+          break;
+        }
+      case 'a':
+        {
+          ang = Serial.parseInt();
+          ang = constrain(ang, 500, 2500);
+          echoServo.writeMicroseconds(ang);
+          break;
+        }
+      case 'e':
+        {
+          // echo settings back to the controller
+          // motor values
+          Serial.print("A");
+          Serial.println(ena);
+          Serial.print("B");
+          Serial.println(enb);
+          Serial.print("I");
+          Serial.println(inx);
+          // echo servo position
+          Serial.print("a");
+          Serial.println(ang, DEC);
+          break;
+        }
+      case 's': {
+          stopMil = Serial.parseInt();
+          stopMil = constrain(stopMil, 0, 49);
+          if (stopMil > 0) {
+            delay(stopMil);
+          }
+          allStop();
+          break;
+        }
+        // default: trash, ignore
+    }
+  }
+}
